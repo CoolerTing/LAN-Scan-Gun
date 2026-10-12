@@ -89,6 +89,20 @@ test('input close and process failures reject requests without leaving pending t
   }
 });
 
+test('input close waits for the helper process to exit', async () => {
+  const worker = fakeWorker();
+  const input = new InputWorker({ command: 'helper', label: 'test', spawnWorker: () => worker });
+  const pendingRequest = assert.rejects(input.request({ command: 'type' }), /服务已关闭/);
+  const pendingClose = input.close();
+  let resolved = false;
+  pendingClose.then(() => { resolved = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(resolved, false);
+  worker.emit('exit', 0);
+  await Promise.all([pendingClose, pendingRequest]);
+  assert.equal(resolved, true);
+});
+
 test('native wrappers keep Unicode, whitespace and Enter independent from permission checks', async (t) => {
   const Constructor = process.platform === 'win32' ? WindowsInput : MacOSInput;
   if (!['win32', 'darwin'].includes(process.platform)) return t.skip('Native platform wrapper');

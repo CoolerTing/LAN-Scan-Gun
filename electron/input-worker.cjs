@@ -69,8 +69,23 @@ class InputWorker {
   close() {
     this.closed = true;
     const worker = this.worker;
-    worker?.failInput(new Error(`${this.label} 输入服务已关闭。`));
-    worker?.kill();
+    if (!worker) return Promise.resolve();
+    worker.failInput(new Error(`${this.label} 输入服务已关闭。`));
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        worker.kill();
+        finish();
+      }, 1000);
+      worker.once('exit', finish);
+      worker.kill();
+    });
   }
 }
 

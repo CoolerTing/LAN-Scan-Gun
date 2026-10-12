@@ -1,6 +1,6 @@
 {
   "name": "lan-scan-gun",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Use a mobile phone as a LAN barcode scanner for Windows and macOS.",
   "main": "electron/main.cjs",
   "author": "Lan Scan Gun",

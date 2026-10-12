@@ -10,6 +10,7 @@ let server;
 let input;
 let preferences = normalizeSettings();
 let savingPorts = false;
+let shuttingDown = false;
 
 function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
 
@@ -106,5 +107,11 @@ else {
     }
   });
   app.on('window-all-closed', () => app.quit());
-  app.on('before-quit', () => { server?.close(); input?.close(); });
+  app.on('before-quit', (event) => {
+    if (shuttingDown) return;
+    event.preventDefault();
+    shuttingDown = true;
+    Promise.allSettled([server?.close(), input?.close()])
+      .finally(() => app.quit());
+  });
 }
