@@ -7,6 +7,8 @@ const crypto = require('node:crypto');
 const selfsigned = require('selfsigned');
 const { WebSocketServer } = require('ws');
 const { DEFAULT_PORTS, validatePorts } = require('./settings.cjs');
+const { resolveLanguage } = require('./language.cjs');
+const { renderSetupPage } = require('./setup-page.cjs');
 
 function getAddresses() {
   const entries = Object.entries(os.networkInterfaces()).flatMap(([name, addresses]) =>
@@ -97,7 +99,8 @@ async function createScannerServer(options) {
   let address = addresses[0].address;
   let settings = {
     enterAfterScan: options.settings?.enterAfterScan !== false,
-    sound: options.settings?.sound !== false
+    sound: options.settings?.sound !== false,
+    language: resolveLanguage(options.settings?.language, options.locale || Intl.DateTimeFormat().resolvedOptions().locale)
   };
   const token = crypto.randomBytes(24).toString('hex');
   const certificate = await loadCertificate(options.dataDir, addresses);
@@ -247,25 +250,8 @@ async function createScannerServer(options) {
       return;
     }
     if (!['/', '/setup'].includes(pathname)) { res.writeHead(404).end(); return; }
-    const target = new URL(mobileUrl());
-    target.hash = '';
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }).end(`<!doctype html>
-      <html lang="zh-CN"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>连接扫码器</title><style>
-      *{box-sizing:border-box}body{font:15px system-ui;margin:0;color:#20252a;background:#f5f6f7}
-      main{max-width:560px;margin:auto;padding:32px 22px}h1{font-size:26px}p,li{line-height:1.8}
-      a{display:block;padding:14px;margin:20px 0;background:#087e6b;color:white;text-align:center;text-decoration:none;border-radius:6px}
-      code{display:block;font-size:11px;overflow-wrap:anywhere;padding:12px;background:#e5e9eb}
-      </style><main><h1>连接 LAN Scan Gun</h1><p>首次连接需要信任这台电脑的本地证书，手机摄像头才能使用。</p>
-      <a href="/certificate.cer">下载本地证书</a>
-      <ol><li>先核对下方指纹与 PC 端显示一致。</li>
-      <li>iPhone：设置 → 已下载描述文件 → 安装；再到 通用 → 关于本机 → 证书信任设置，启用本证书完全信任。</li>
-      <li>Android：设置中搜索「安装证书」，选择 CA 证书并安装下载的文件。不同品牌路径可能不同。</li></ol>
-      <code>${escapeHtml(certificate.fingerprint)}</code>
-      <a id="continue">打开扫码页</a><p>仅信任你自己的电脑，用完可在系统设置删除本证书。请保持两台设备在同一局域网。</p>
-      <script>const token=new URLSearchParams(location.hash.slice(1)).get('token');const link=document.querySelector('#continue');
-      if(token){link.href=${JSON.stringify(target.href)}+'#token='+encodeURIComponent(token)}
-      else{link.textContent='请重新扫描 PC 端连接二维码'}</script></main></html>`);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+      .end(renderSetupPage(settings.language, escapeHtml(certificate.fingerprint), mobileUrl()));
   }
   function createSetupListener() { return trackSockets(http.createServer(serveSetup)); }
   let setup = createSetupListener();
@@ -342,7 +328,10 @@ async function createScannerServer(options) {
       address = next;
     },
     updateSettings(next) {
-      settings = { enterAfterScan: Boolean(next.enterAfterScan), sound: Boolean(next.sound) };
+      settings = {
+        enterAfterScan: Boolean(next.enterAfterScan), sound: Boolean(next.sound),
+        language: next.language === undefined ? settings.language : resolveLanguage(next.language)
+      };
       emit({ type: 'settings', settings });
     },
     clearHistory() { history.length = 0; emit({ type: 'history-cleared' }); },

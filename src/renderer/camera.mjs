@@ -1,3 +1,5 @@
+import { createI18n } from './i18n.mjs';
+
 const retryableErrors = new Set([
   'OverconstrainedError', 'ConstraintNotSatisfiedError', 'NotReadableError',
   'TrackStartError', 'NotFoundError', 'DevicesNotFoundError', 'NotSupportedError', 'TypeError'
@@ -45,23 +47,22 @@ export async function cameraMetadata(mediaDevices, stream, timeoutMs = 1500) {
   return { devices, torch, deviceId };
 }
 
-export function cameraErrorMessage(error, phase = 'capture') {
+export function cameraErrorMessage(error, phase = 'capture', language = 'zh') {
+  const { t } = createI18n(language);
   const name = error?.name || 'Error';
   const messages = {
-    NotAllowedError: '相机权限被拒绝。请检查平板系统的浏览器相机权限、本站相机权限，以及 HTTPS 证书信任。若从微信或其他应用打开，请改用 Chrome 等独立浏览器。',
-    PermissionDeniedError: '相机权限被拒绝，请检查系统和浏览器的相机权限。',
-    SecurityError: '浏览器安全策略阻止相机。请使用受信任的 HTTPS，并在独立浏览器打开。',
-    NotReadableError: '相机无法读取，可能被其他应用占用或驱动异常。请关闭其他相机应用，重新开启浏览器后再试。',
-    TrackStartError: '相机无法启动，请关闭其他相机应用后重试。',
-    NotFoundError: '没有找到可用镜头，请检查平板摄像头是否可用。',
-    DevicesNotFoundError: '没有找到可用镜头，请检查平板摄像头是否可用。',
-    OverconstrainedError: '当前镜头参数不受支持，基础参数也未能打开相机。',
-    ConstraintNotSatisfiedError: '当前镜头参数不受支持，基础参数也未能打开相机。',
-    NotSupportedError: '当前浏览器不支持此相机接口，请更新或更换独立浏览器。'
+    NotAllowedError: 'cameraPermissionDenied',
+    PermissionDeniedError: 'cameraPermission',
+    SecurityError: 'cameraSecurity',
+    NotReadableError: 'cameraOccupied',
+    TrackStartError: 'cameraStartFailed',
+    NotFoundError: 'cameraMissing',
+    DevicesNotFoundError: 'cameraMissing',
+    OverconstrainedError: 'cameraConstraints',
+    ConstraintNotSatisfiedError: 'cameraConstraints',
+    NotSupportedError: 'cameraApiUnsupported'
   };
-  const detail = messages[name] || (phase === 'preview'
-    ? '相机已获取，但视频预览或扫码初始化失败，请更新或更换浏览器。'
-    : '相机启动失败，请查看下方相机诊断。');
+  const detail = t(messages[name] || (phase === 'preview' ? 'cameraPreviewFailed' : 'cameraFailed'));
   return `${detail} [${name}]`;
 }
 

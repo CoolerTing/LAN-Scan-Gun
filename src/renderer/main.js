@@ -1,76 +1,104 @@
 import QRCode from 'qrcode';
 import { refreshIcons, escapeHtml, time } from './ui';
+import { createI18n, detectLanguage, translateElements } from './i18n.mjs';
 import './styles.css';
 
 let info;
 let history = [];
 const bridge = window.scanGun;
 const $ = (selector) => document.querySelector(selector);
+const i18n = createI18n(detectLanguage(navigator.language));
+const t = (key, values) => i18n.t(key, values);
+let languageMode = 'auto';
 document.querySelector('#app').innerHTML = `
 <header class="topbar">
-  <div class="brand"><i data-lucide="scan-line"></i><strong>LAN Scan Gun</strong><span class="muted">局域网扫码枪</span></div>
-  <span class="status" id="connection-status"><span class="dot"></span>等待设备</span>
+  <div class="brand"><i data-lucide="scan-line"></i><strong>LAN Scan Gun</strong><span class="muted" data-i18n="brandSubtitle"></span></div>
+  <span class="status" id="connection-status"><span class="dot"></span><span data-i18n="waitingDevices"></span></span>
 </header>
 <main class="desktop-content">
-  <div class="page-heading"><h1>扫码工作台</h1><span class="service-state"><span class="dot green"></span><span id="service-status">启动中</span></span></div>
+  <div class="page-heading"><h1 data-i18n="workspace"></h1><span class="service-state"><span class="dot green"></span><span id="service-status" data-i18n="starting"></span></span></div>
   <div id="notice" class="notice" hidden></div>
   <div class="workspace">
     <section class="connection-section">
-      <div class="section-heading"><h2>设备连接</h2><i data-lucide="smartphone"></i></div>
-      <div class="pairing-code"><canvas id="qr-canvas" aria-label="移动设备连接二维码"></canvas></div>
-      <label class="field-label" for="network">网络接口</label>
+      <div class="section-heading"><h2 data-i18n="deviceConnection"></h2><i data-lucide="smartphone"></i></div>
+      <div class="pairing-code"><canvas id="qr-canvas" data-i18n-aria-label="mobileQrAria"></canvas></div>
+      <label class="field-label" for="network" data-i18n="networkInterface"></label>
       <select id="network"></select>
-      <div class="address-row"><code id="mobile-url">等待服务</code>
-        <button id="copy-url" class="icon-btn" title="复制连接地址" aria-label="复制连接地址"><i data-lucide="copy"></i></button>
-        <button id="open-mobile" class="icon-btn" title="打开连接页" aria-label="打开连接页"><i data-lucide="external-link"></i></button>
+      <div class="address-row"><code id="mobile-url" data-i18n="waitingService"></code>
+        <button id="copy-url" class="icon-btn" data-i18n-title="copyUrl" data-i18n-aria-label="copyUrl"><i data-lucide="copy"></i></button>
+        <button id="open-mobile" class="icon-btn" data-i18n-title="openMobile" data-i18n-aria-label="openMobile"><i data-lucide="external-link"></i></button>
       </div>
-      <details class="certificate-details"><summary>本地证书</summary><code id="fingerprint"></code></details>
+      <details class="certificate-details"><summary data-i18n="localCertificate"></summary><code id="fingerprint"></code></details>
       <form id="port-settings" novalidate>
-        <div class="section-heading settings-heading"><h2>端口设置</h2>
-          <button id="apply-ports" class="icon-btn" type="submit" title="应用并保存端口" aria-label="应用并保存端口"><i data-lucide="check"></i></button>
+        <div class="section-heading settings-heading"><h2 data-i18n="portSettings"></h2>
+          <button id="apply-ports" class="icon-btn" type="submit" data-i18n-title="applyPorts" data-i18n-aria-label="applyPorts"><i data-lucide="check"></i></button>
         </div>
         <div class="port-fields">
-          <label class="field-label" for="scanner-port">扫码服务 (HTTPS/WSS)
+          <label class="field-label" for="scanner-port"><span data-i18n="scannerService"></span>
             <input id="scanner-port" type="number" min="1" max="65535" step="1" required value="8787" inputmode="numeric">
           </label>
-          <label class="field-label" for="setup-port">连接页 (HTTP)
+          <label class="field-label" for="setup-port"><span data-i18n="setupPage"></span>
             <input id="setup-port" type="number" min="1" max="65535" step="1" required value="8788" inputmode="numeric">
           </label>
         </div>
       </form>
-      <div class="section-heading settings-heading"><h2>输入设置</h2><i data-lucide="keyboard"></i></div>
-      <div id="input-permission" class="setting" hidden><span id="input-permission-status">辅助功能 · 未授权</span>
-        <button id="grant-input-permission" class="icon-btn" title="打开辅助功能授权设置" aria-label="打开辅助功能授权设置"><i data-lucide="settings"></i></button>
+      <div class="section-heading settings-heading"><h2 data-i18n="inputSettings"></h2><i data-lucide="keyboard"></i></div>
+      <div id="input-permission" class="setting" hidden><span id="input-permission-status"></span>
+        <button id="grant-input-permission" class="icon-btn" data-i18n-title="openAccessibility" data-i18n-aria-label="openAccessibility"><i data-lucide="settings"></i></button>
       </div>
-      <label class="setting"><span>扫码后回车</span><input id="enter-setting" type="checkbox" role="switch" checked></label>
-      <label class="setting"><span>手机提示音</span><input id="sound-setting" type="checkbox" role="switch" checked></label>
-      <div class="device-summary"><i data-lucide="wifi"></i><span id="device-count">暂无移动设备</span></div>
+      <label class="setting"><span data-i18n="enterAfterScan"></span><input id="enter-setting" type="checkbox" role="switch" checked></label>
+      <label class="setting"><span data-i18n="phoneSound"></span><input id="sound-setting" type="checkbox" role="switch" checked></label>
+      <label class="setting language-setting"><span data-i18n="language"></span><select id="language-setting">
+        <option value="auto" data-i18n="auto"></option><option value="zh">中文</option><option value="en">English</option>
+      </select></label>
+      <div class="device-summary"><i data-lucide="wifi"></i><span id="device-count" data-i18n="noMobile"></span></div>
     </section>
     <section class="records-section">
-      <div class="section-heading"><h2>扫描记录 <span class="count" id="scan-count">0</span></h2>
-        <button id="clear-history" class="icon-btn" title="清空记录" aria-label="清空记录"><i data-lucide="trash-2"></i></button>
+      <div class="section-heading"><h2><span data-i18n="scanRecords"></span><span class="count" id="scan-count">0</span></h2>
+        <button id="clear-history" class="icon-btn" data-i18n-title="clearRecords" data-i18n-aria-label="clearRecords"><i data-lucide="trash-2"></i></button>
       </div>
-      <div class="table-scroll"><table><thead><tr><th>内容</th><th>码制</th><th>时间</th><th>状态</th></tr></thead>
+      <div class="table-scroll"><table><thead><tr><th data-i18n="content"></th><th data-i18n="format"></th><th data-i18n="time"></th><th data-i18n="status"></th></tr></thead>
         <tbody id="history-list"></tbody></table></div>
-      <div id="empty-state" class="empty-state"><i data-lucide="scan-barcode"></i><span>暂无扫描记录</span></div>
-      <div class="records-footer"><span id="success-count">0 次输入成功</span><span>最近 100 条</span></div>
+      <div id="empty-state" class="empty-state"><i data-lucide="scan-barcode"></i><span data-i18n="noRecords"></span></div>
+      <div class="records-footer"><span id="success-count"></span><span data-i18n="recent100"></span></div>
     </section>
   </div>
 </main>`;
 
+function applyLanguage() {
+  i18n.setLanguage(detectLanguage(info?.locale || navigator.language, languageMode));
+  document.documentElement.lang = i18n.language === 'zh' ? 'zh-CN' : 'en';
+  translateElements(document, t);
+  $('#language-setting').value = languageMode;
+  updateStatus(info?.connectedDevices || 0);
+  renderHistory();
+  if (info) {
+    renderServiceStatus();
+    if (info.inputStatus) renderInputStatus(info.inputStatus);
+    if (!bridge) {
+      $('#network').innerHTML = `<option>${t('preview')}</option>`;
+      $('#fingerprint').textContent = t('previewFingerprint');
+    }
+  }
+}
+function renderServiceStatus() {
+  $('#service-status').textContent = !bridge ? t('preview') :
+    info.running === false ? t('serviceError') : t('serviceRunning', info);
+}
 function updateStatus(count) {
+  if (info) info.connectedDevices = count;
   $('#connection-status').classList.toggle('connected', count > 0);
-  $('#connection-status').innerHTML = `<span class="dot"></span>${count > 0 ? `${count} 台设备在线` : '等待设备'}`;
-  $('#device-count').textContent = count > 0 ? `${count} 台移动设备已连接` : '暂无移动设备';
+  $('#connection-status').innerHTML = `<span class="dot"></span>${count > 0 ? t('devicesOnline', { count }) : t('waitingDevices')}`;
+  $('#device-count').textContent = count > 0 ? t('devicesConnected', { count }) : t('noMobile');
 }
 function renderHistory() {
   $('#scan-count').textContent = history.length;
   $('#empty-state').hidden = history.length > 0;
-  $('#success-count').textContent = `${history.filter((item) => item.status === 'success').length} 次输入成功`;
+  $('#success-count').textContent = t('successCount', { count: history.filter((item) => item.status === 'success').length });
   $('#history-list').innerHTML = history.map((item) => `<tr>
     <td class="scan-value">${escapeHtml(item.value)}${item.error ? `<span class="scan-error">${escapeHtml(item.error)}</span>` : ''}</td>
-    <td>${escapeHtml(item.format)}</td><td class="time-cell">${time(item.time)}</td>
-    <td><span class="result ${item.status}">${{ pending: '输入中', success: '已输入', error: '失败' }[item.status] || '已收到'}</span></td>
+    <td>${escapeHtml(item.format)}</td><td class="time-cell">${time(item.time, i18n.language)}</td>
+    <td><span class="result ${item.status}">${t({ pending: 'statusInputting', success: 'statusEntered', error: 'statusFailed' }[item.status] || 'statusReceived')}</span></td>
   </tr>`).join('');
 }
 async function renderConnection() {
@@ -78,8 +106,7 @@ async function renderConnection() {
   $('#fingerprint').textContent = info.fingerprint;
   $('#scanner-port').value = info.port;
   $('#setup-port').value = info.setupPort;
-  if (bridge) $('#service-status').textContent = info.running === false ?
-    '服务异常 · 请重启' : `服务运行中 · ${info.port} / ${info.setupPort}`;
+  renderServiceStatus();
   await QRCode.toCanvas($('#qr-canvas'), info.pairingUrl, {
     width: 232, margin: 2, color: { dark: '#182b27', light: '#ffffff' }
   });
@@ -91,8 +118,8 @@ function notice(text) {
 function renderInputStatus(status) {
   info.inputStatus = status;
   $('#input-permission').hidden = info.platform !== 'darwin';
-  $('#input-permission-status').textContent = status.error ? '输入服务 · 不可用' :
-    `辅助功能 · ${status.trusted ? '已授权' : '未授权'}`;
+  $('#input-permission-status').textContent = status.error ? t('inputUnavailable') :
+    `${t('accessibility')} · ${t(status.trusted ? 'granted' : 'notGranted')}`;
   if (status.error) notice(status.error);
 }
 async function refreshInputStatus() {
@@ -100,16 +127,31 @@ async function refreshInputStatus() {
   catch (error) { notice(error.message); }
 }
 async function initialize() {
+  applyLanguage();
+  $('#language-setting').addEventListener('change', async () => {
+    const previous = languageMode;
+    $('#language-setting').disabled = true;
+    try {
+      const next = $('#language-setting').value;
+      if (bridge) info.settings = await bridge.setSettings({ language: next });
+      languageMode = next;
+      applyLanguage();
+      notice('');
+    } catch (error) {
+      languageMode = previous;
+      $('#language-setting').value = previous;
+      notice(error.message);
+    } finally { $('#language-setting').disabled = false; }
+  });
   refreshIcons();
   if (!bridge) {
     info = {
       pairingUrl: `${location.protocol}//${location.hostname}:8788/setup#token=preview-only`,
       port: 8787, setupPort: 8788,
-      fingerprint: '预览模式：请在 Windows 或 macOS 桌面端连接真实设备。'
+      fingerprint: t('previewFingerprint')
     };
-    $('#network').innerHTML = `<option>界面预览</option>`;
-    $('#service-status').textContent = '预览模式';
-    notice('当前是网页预览。系统光标输入和设备配对需要 Windows 或 macOS 桌面端。');
+    applyLanguage();
+    notice(t('previewNotice'));
     $('#enter-setting').disabled = $('#sound-setting').disabled = true;
     $('#copy-url').disabled = $('#open-mobile').disabled = true;
     $('#clear-history').disabled = true;
@@ -120,7 +162,8 @@ async function initialize() {
   }
   info = await bridge.getAppInfo();
   history = info.history;
-  $('#service-status').textContent = `服务运行中 · ${info.port} / ${info.setupPort}`;
+  languageMode = info.settings.language || 'auto';
+  applyLanguage();
   $('#network').innerHTML = info.addresses.map((item) =>
     `<option value="${escapeHtml(item.address)}">${escapeHtml(item.name)} · ${escapeHtml(item.address)}</option>`).join('');
   $('#network').value = info.lanIp;
@@ -128,7 +171,7 @@ async function initialize() {
   $('#sound-setting').checked = info.settings.sound;
   updateStatus(info.connectedDevices);
   renderInputStatus(info.inputStatus);
-  if (!info.inputStatus.supported) notice('当前系统不支持光标输入，请使用 Windows 或 macOS 桌面端。');
+  if (!info.inputStatus.supported) notice(t('unsupportedInput'));
   await renderConnection();
   renderHistory();
   $('#grant-input-permission').addEventListener('click', async () => {
@@ -144,8 +187,8 @@ async function initialize() {
   });
   $('#copy-url').addEventListener('click', async () => {
     await bridge.copyUrl();
-    $('#copy-url').title = '已复制';
-    setTimeout(() => { $('#copy-url').title = '复制连接地址'; }, 1500);
+    $('#copy-url').title = t('copied');
+    setTimeout(() => { $('#copy-url').title = t('copyUrl'); }, 1500);
   });
   $('#open-mobile').addEventListener('click', () => bridge.openMobileUrl());
   $('#clear-history').addEventListener('click', () => bridge.clearHistory());
@@ -154,15 +197,15 @@ async function initialize() {
     const port = $('#scanner-port').valueAsNumber;
     const setupPort = $('#setup-port').valueAsNumber;
     if (!$('#port-settings').checkValidity()) {
-      notice('端口号必须是 1–65535 之间的整数。');
+      notice(t('portsInvalid'));
       return;
     }
     if (port === setupPort) {
-      notice('扫码服务与连接页不能使用同一个端口。');
+      notice(t('portsSame'));
       return;
     }
     if (port === info.port && setupPort === info.setupPort) {
-      notice('端口未改变。');
+      notice(t('portsUnchanged'));
       return;
     }
     const controls = ['#scanner-port', '#setup-port', '#apply-ports', '#network', '#copy-url', '#open-mobile'];
@@ -171,7 +214,7 @@ async function initialize() {
       info = { ...info, ...await bridge.setPorts({ port, setupPort }) };
       updateStatus(info.connectedDevices);
       await renderConnection();
-      notice('端口已保存。请用移动设备重新扫描二维码连接，并在系统防火墙放行新端口。');
+      notice(t('portsSaved'));
     } catch (error) {
       notice(error.message);
       info = { ...info, ...await bridge.getAppInfo() };
@@ -203,4 +246,4 @@ async function initialize() {
     if (message.type === 'history-cleared') { history = []; renderHistory(); }
   });
 }
-initialize().catch((error) => notice(`初始化失败：${error.message}`));
+initialize().catch((error) => notice(t('initFailed', { message: error.message })));

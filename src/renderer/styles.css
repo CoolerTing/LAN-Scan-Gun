@@ -46,6 +46,8 @@ summary { padding: 6px 0; }
 .port-fields input { display: block; width: 100%; min-width: 0; height: 36px; margin-top: 6px; padding: 6px 8px; font-size: 13px; color: #343d41; border: 1px solid var(--line); border-radius: 4px; background: #fff; font-variant-numeric: tabular-nums; }
 .port-fields input:disabled { background: #f5f6f7; color: var(--muted); }
 .setting { min-height: 44px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; gap: 20px; }
+.language-setting select { width: 146px; flex: 0 0 auto; }
+.port-fields .field-label > span { display: block; min-height: 36px; overflow-wrap: anywhere; }
 input[role="switch"] { appearance: none; width: 36px; height: 20px; border: 0; border-radius: 20px; background: #cad2d4; margin: 0; padding: 3px; transition: background .15s; flex: 0 0 auto; }
 input[role="switch"]::after { content: ""; display: block; width: 14px; height: 14px; background: white; border-radius: 50%; transition: transform .15s; }
 input[role="switch"]:checked { background: var(--green); }
@@ -65,7 +67,7 @@ td { border-bottom: 1px solid #edf0f1; vertical-align: top; overflow-wrap: anywh
 .scan-value { font-family: Consolas, monospace; color: #263533; }
 .scan-error { display: block; font: 11px "Segoe UI", sans-serif; color: var(--red); line-height: 1.6; padding-top: 6px; }
 .time-cell { font-variant-numeric: tabular-nums; font-size: 11px; }
-.result { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.result { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .result.success { color: var(--green); }
 .result.error { color: var(--red); }
 .result.pending { color: #997015; }

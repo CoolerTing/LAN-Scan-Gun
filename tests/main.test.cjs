@@ -44,6 +44,7 @@ async function desktop(dataDir, platform = 'win32') {
         ...fs, existsSync: (filename) => filename.endsWith(path.join('dist', 'index.html')) || fs.existsSync(filename)
       };
       if (name === './settings.cjs') return settings;
+      if (name === './language.cjs') return require('../electron/language.cjs');
       if (name === './input.cjs') return {
         createInput: () => ({
           send: async (...args) => { inputs.push(args); },
@@ -83,7 +84,9 @@ test('desktop saves ports across restart and boolean settings do not overwrite t
   await first.invoke('ports-changed', { port: 19001, setupPort: 19002 });
   first.invoke('settings-changed', { enterAfterScan: false, sound: false });
   const saved = settings.readSettings(path.join(directory, 'settings.json'));
-  assert.deepEqual(saved, { port: 19001, setupPort: 19002, enterAfterScan: false, sound: false });
+  assert.deepEqual(saved, {
+    port: 19001, setupPort: 19002, enterAfterScan: false, sound: false, language: 'auto'
+  });
   const restarted = await desktop(directory);
   assert.deepEqual(restarted.server.info(), { port: 19001, setupPort: 19002 });
   assert.equal((await restarted.invoke('get-app-info')).settings.enterAfterScan, false);

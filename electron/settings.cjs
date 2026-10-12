@@ -16,7 +16,8 @@ function normalizeSettings(saved = {}) {
   let ports;
   try { ports = validatePorts({ port: saved.port ?? DEFAULT_PORTS.port, setupPort: saved.setupPort ?? DEFAULT_PORTS.setupPort }); }
   catch { ports = { ...DEFAULT_PORTS }; }
-  return { enterAfterScan: saved.enterAfterScan !== false, sound: saved.sound !== false, ...ports };
+  const language = ['auto', 'zh', 'en'].includes(saved.language) ? saved.language : 'auto';
+  return { enterAfterScan: saved.enterAfterScan !== false, sound: saved.sound !== false, language, ...ports };
 }
 
 function readSettings(filename) {

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const { createScannerServer, getAddresses } = require('./server.cjs');
 const { createInput } = require('./input.cjs');
 const { normalizeSettings, readSettings, writeSettings, validatePorts } = require('./settings.cjs');
+const { resolveLanguage } = require('./language.cjs');
 
 let window;
 let server;
@@ -13,6 +14,10 @@ let savingPorts = false;
 let shuttingDown = false;
 
 function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
+function systemLocale() {
+  return app.getPreferredSystemLanguages?.()[0] || app.getLocale?.() || 'en-US';
+}
+function effectiveLanguage() { return resolveLanguage(preferences.language, systemLocale()); }
 
 function emit(payload) {
   if (window && !window.isDestroyed()) window.webContents.send('server-event', payload);
@@ -36,7 +41,8 @@ async function inputStatus() {
 }
 ipcMain.handle('get-app-info', async () => ({
   ...server.info(), settings: preferences, addresses: getAddresses(),
-  platform: process.platform, history: server.history, inputStatus: await inputStatus()
+  platform: process.platform, locale: systemLocale(), language: effectiveLanguage(),
+  history: server.history, inputStatus: await inputStatus()
 }));
 ipcMain.handle('get-input-status', inputStatus);
 ipcMain.handle('request-input-permission', async () => {
@@ -54,10 +60,16 @@ ipcMain.handle('select-address', (_event, address) => {
   return server.info();
 });
 ipcMain.handle('settings-changed', (_event, settings) => {
-  const next = { ...preferences, enterAfterScan: Boolean(settings.enterAfterScan), sound: Boolean(settings.sound) };
+  const next = { ...preferences };
+  if (typeof settings.enterAfterScan === 'boolean') next.enterAfterScan = settings.enterAfterScan;
+  if (typeof settings.sound === 'boolean') next.sound = settings.sound;
+  if (settings.language !== undefined) {
+    if (!['auto', 'zh', 'en'].includes(settings.language)) throw new Error('Invalid language setting.');
+    next.language = settings.language;
+  }
   writeSettings(settingsPath(), next);
   preferences = next;
-  server.updateSettings(preferences);
+  server.updateSettings({ ...preferences, language: effectiveLanguage() });
   return preferences;
 });
 ipcMain.handle('ports-changed', async (_event, ports) => {
@@ -98,7 +110,8 @@ else {
       server = await createScannerServer({
         root: path.join(__dirname, '..', 'dist'), dataDir: app.getPath('userData'),
         port: preferences.port, setupPort: preferences.setupPort,
-        settings: preferences, inject: (value, enter) => input.send(value, enter), onEvent: emit
+        settings: { ...preferences, language: effectiveLanguage() },
+        inject: (value, enter) => input.send(value, enter), onEvent: emit
       });
       createWindow();
     } catch (error) {

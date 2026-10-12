@@ -1,6 +1,7 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { BarcodeFormat, NotFoundException, ChecksumException, FormatException } from '@zxing/library';
 import { refreshIcons } from './ui';
+import { createI18n, detectLanguage, translateElements } from './i18n.mjs';
 import {
   openCameraStream, stopStream, stopDecoderControls, cameraMetadata, cameraErrorMessage, createRequestId
 } from './camera.mjs';
@@ -8,6 +9,8 @@ import './styles.css';
 
 const $ = (selector) => document.querySelector(selector);
 const token = new URLSearchParams(location.hash.slice(1)).get('token');
+const i18n = createI18n(detectLanguage(new URLSearchParams(location.search).get('lang') || navigator.language));
+const t = (key, values) => i18n.t(key, values);
 let socket;
 let reconnectTimer;
 let reader;
@@ -26,44 +29,63 @@ let stopping = false;
 let cameraGeneration = 0;
 const recentScans = [];
 let latestCameraError = '';
-let cameraPhase = '未启动';
+let cameraPhase = 'notStarted';
+let cameraAttempt = 1;
 
 document.body.classList.add('mobile-shell');
 $('#mobile-app').innerHTML = `<main class="mobile-app">
   <header class="mobile-top"><div class="brand"><i data-lucide="scan-line"></i><strong>LAN Scan Gun</strong></div>
-    <span class="status" id="mobile-status"><span class="dot"></span>连接中</span></header>
-  <div class="scanner-heading"><h1>移动扫码器</h1><span id="suffix-label">回车已开启</span></div>
-  <div class="scanner-frame"><video id="preview" autoplay muted playsinline webkit-playsinline aria-label="扫码摄像头"></video>
+    <span class="status" id="mobile-status"><span class="dot"></span><span data-i18n="waitingConnection"></span></span></header>
+  <div class="scanner-heading"><h1 data-i18n="mobileScanner"></h1><span id="suffix-label" data-i18n="enterEnabled"></span></div>
+  <div class="scanner-frame"><video id="preview" autoplay muted playsinline webkit-playsinline data-i18n-aria-label="camera"></video>
     <div class="viewfinder"><span></span><span></span><span></span><span></span></div>
-    <div class="camera-idle" id="camera-idle"><i data-lucide="camera"></i><span>摄像头未开启</span></div>
-    <div class="scanner-message" id="scanner-message">等待连接</div>
+    <div class="camera-idle" id="camera-idle"><i data-lucide="camera"></i><span data-i18n="cameraOff"></span></div>
+    <div class="scanner-message" id="scanner-message" data-i18n="waitingConnection"></div>
   </div>
   <div class="camera-toolbar">
-    <button id="start-scan" class="primary-btn"><i data-lucide="camera"></i><span>开启摄像头</span></button>
-    <button id="switch-camera" class="icon-btn" title="切换镜头" aria-label="切换镜头" disabled><i data-lucide="switch-camera"></i></button>
-    <button id="torch" class="icon-btn" title="手电筒" aria-label="手电筒" disabled><i data-lucide="flashlight"></i></button>
+    <button id="start-scan" class="primary-btn"><i data-lucide="camera"></i><span data-i18n="startCamera"></span></button>
+    <button id="switch-camera" class="icon-btn" data-i18n-title="switchCamera" data-i18n-aria-label="switchCamera" disabled><i data-lucide="switch-camera"></i></button>
+    <button id="torch" class="icon-btn" data-i18n-title="flashlight" data-i18n-aria-label="flashlight" disabled><i data-lucide="flashlight"></i></button>
   </div>
   <div class="notice" id="error-box" role="alert" hidden></div>
-  <section class="last-scan"><div class="section-heading"><h2>最近识别</h2><span class="result" id="send-status" role="status" aria-live="polite">等待扫码</span></div>
+  <section class="last-scan"><div class="section-heading"><h2 data-i18n="recentScans"></h2><span class="result" id="send-status" data-i18n="waitingScan" role="status" aria-live="polite"></span></div>
     <code id="last-scan-value">-</code>
-    <ul id="recent-scans" class="recent-scans" aria-label="最近识别记录"></ul></section>
-  <details class="manual-entry"><summary>手动发送</summary><form id="manual-form">
-    <input id="manual-value" aria-label="待发送内容" placeholder="条码内容" maxlength="4096" required autocomplete="off">
-    <button class="icon-btn" title="发送" aria-label="发送"><i data-lucide="send"></i></button>
+    <ul id="recent-scans" class="recent-scans" data-i18n-aria-label="recentScanRecords"></ul></section>
+  <details class="manual-entry"><summary data-i18n="manualSend"></summary><form id="manual-form">
+    <input id="manual-value" data-i18n-aria-label="valueToSend" data-i18n-placeholder="barcodeContent" maxlength="4096" required autocomplete="off">
+    <button class="icon-btn" data-i18n-title="send" data-i18n-aria-label="send"><i data-lucide="send"></i></button>
   </form></details>
-  <details class="camera-diagnostics"><summary>相机诊断</summary><pre id="camera-diagnostics"></pre></details>
+  <details class="camera-diagnostics"><summary data-i18n="cameraDiagnostics"></summary><pre id="camera-diagnostics"></pre></details>
 </main>`;
 refreshIcons();
+function applyLanguage(language) {
+  i18n.setLanguage(language);
+  document.documentElement.lang = i18n.language === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('mobileScanner');
+  translateElements(document, t);
+  $('#start-scan span').textContent = t(running ? 'pauseScan' : 'startCamera');
+  if (socket) {
+    $('#mobile-status').innerHTML = `<span class="dot"></span>${t(connected() ? 'pcOnline' : 'connectionLost')}`;
+  } else {
+    $('#mobile-status').innerHTML = `<span class="dot"></span>${t('waitingConnection')}`;
+  }
+  renderRecentScans();
+  updateDiagnostics();
+}
+function setLabel(selector, key) {
+  $(selector).dataset.i18n = key;
+  $(selector).textContent = t(key);
+}
 function updateDiagnostics(cause) {
   if (cause) latestCameraError = `${cause.name || 'Error'}: ${cause.message || ''}`;
   $('#camera-diagnostics').textContent = [
-    `页面：${location.origin}`,
-    `安全上下文：${window.isSecureContext ? '是' : '否'}`,
-    `相机接口：${navigator.mediaDevices?.getUserMedia ? '可用' : '不可用'}`,
-    `步骤：${cameraPhase}`,
-    `可枚举镜头：${cameras.length}`,
-    `最近错误：${latestCameraError || '无'}`,
-    `浏览器：${navigator.userAgent}`
+    `${t('page')}: ${location.origin}`,
+    `${t('secureContext')}: ${t(window.isSecureContext ? 'yes' : 'no')}`,
+    `${t('cameraApi')}: ${t(navigator.mediaDevices?.getUserMedia ? 'available' : 'unavailable')}`,
+    `${t('phase')}: ${t(cameraPhase, { attempt: cameraAttempt })}`,
+    `${t('cameras')}: ${cameras.length}`,
+    `${t('recentError')}: ${latestCameraError || t('none')}`,
+    `${t('browser')}: ${navigator.userAgent}`
   ].join('\n');
 }
 function connected() {
@@ -76,8 +98,8 @@ function renderRecentScans() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'recent-scan-button';
-    button.title = '再次发送到 PC';
-    button.setAttribute('aria-label', `再次发送：${record.value}`);
+    button.title = t('resendPc');
+    button.setAttribute('aria-label', t('resend', { value: record.value }));
     button.disabled = Boolean(pending) || !connected();
     const content = document.createElement('span');
     content.className = 'recent-scan-content';
@@ -85,11 +107,11 @@ function renderRecentScans() {
     value.textContent = record.value;
     const meta = document.createElement('span');
     meta.className = 'recent-scan-meta';
-    meta.textContent = `${record.format} · ${new Date(record.time).toLocaleTimeString('zh-CN', { hour12: false })}`;
+    meta.textContent = `${record.format} · ${new Date(record.time).toLocaleTimeString(i18n.language === 'zh' ? 'zh-CN' : 'en-US', { hour12: false })}`;
     content.append(value, meta);
     const status = document.createElement('span');
     status.className = `result ${record.status}`;
-    status.textContent = { pending: '发送中', success: '已输入', error: '失败', unknown: '未确认', unsent: '未发送' }[record.status];
+    status.textContent = { pending: t('sending'), success: t('statusEntered'), error: t('statusFailed'), unknown: t('unconfirmed'), unsent: t('unsent') }[record.status];
     const icon = document.createElement('i');
     icon.setAttribute('data-lucide', 'send');
     button.append(content, status, icon);
@@ -102,17 +124,17 @@ function renderRecentScans() {
 function error(text = '') { $('#error-box').hidden = !text; $('#error-box').textContent = text; }
 function setStatus(connected) {
   $('#mobile-status').classList.toggle('connected', connected);
-  $('#mobile-status').innerHTML = `<span class="dot"></span>${connected ? 'PC 在线' : '连接中断'}`;
+  $('#mobile-status').innerHTML = `<span class="dot"></span>${connected ? t('pcOnline') : t('connectionLost')}`;
   renderRecentScans();
 }
-function resetPending(message) {
+function resetPending() {
   if (!pending) return;
   clearTimeout(pending.timer);
   pending.record.status = 'unknown';
   pending = null;
-  $('#send-status').textContent = message;
+  setLabel('#send-status', 'unknownResult');
   $('#send-status').className = 'result error';
-  $('#scanner-message').textContent = message;
+  setLabel('#scanner-message', 'unknownResult');
   renderRecentScans();
 }
 function connect() {
@@ -123,11 +145,12 @@ function connect() {
     let message;
     try { message = JSON.parse(data); } catch { return; }
     if (message.type === 'state' || message.type === 'settings') {
+      if (message.settings.language) applyLanguage(message.settings.language);
       soundEnabled = Boolean(message.settings.sound);
-      $('#suffix-label').textContent = message.settings.enterAfterScan ? '回车已开启' : '不附加回车';
+      setLabel('#suffix-label', message.settings.enterAfterScan ? 'enterEnabled' : 'noEnter');
       if (message.type === 'state') {
         setStatus(true);
-        $('#scanner-message').textContent = running ? '等待识别' : '已连接';
+        setLabel('#scanner-message', running ? 'scanning' : 'connected');
       }
     }
     if (message.type === 'ack' && pending?.id === message.id) {
@@ -135,15 +158,15 @@ function connect() {
       pending.record.status = message.ok ? 'success' : 'error';
       pending = null;
       renderRecentScans();
-      $('#send-status').textContent = message.ok ? '已输入 PC' : '输入失败';
+      setLabel('#send-status', message.ok ? 'inputToPc' : 'inputFailed');
       $('#send-status').className = `result ${message.ok ? 'success' : 'error'}`;
       if (message.ok) {
-        $('#scanner-message').textContent = '输入成功';
+        setLabel('#scanner-message', 'inputSuccess');
         error();
         if (soundEnabled) beep();
         navigator.vibrate?.(60);
       } else {
-        $('#scanner-message').textContent = '输入失败';
+        setLabel('#scanner-message', 'inputFailed');
         error(message.error);
       }
     }
@@ -151,13 +174,13 @@ function connect() {
   socket.addEventListener('close', (event) => {
     setStatus(false);
     if (pending) {
-      resetPending('结果未确认');
-      error('连接断开，PC 输入结果未确认。请核对目标窗口后再扫码，不会自动重发。');
+      resetPending();
+      error(t('disconnectedNoAck'));
     }
-    if (event.code === 1008) { error('配对已失效，请重新扫描 PC 端二维码。'); return; }
+    if (event.code === 1008) { error(t('pairingExpired')); return; }
     if (!stopping) reconnectTimer = setTimeout(connect, 2500);
   });
-  socket.addEventListener('error', () => error('连接失败，请检查 PC 服务、证书信任和局域网。'));
+  socket.addEventListener('error', () => error(t('connectionFailed')));
 }
 function beep() {
   if (!audio) return;
@@ -174,7 +197,7 @@ function beep() {
 function send(value, format, record) {
   if (pending) return false;
   if (!value || value.length > 4096 || /[\x00-\x1f\x7f]/.test(value)) {
-    error('内容为空、过长或含控制字符，无法输入。'); return false;
+    error(t('emptyOrInvalid')); return false;
   }
   if (!record) {
     record = { value, format, time: Date.now(), status: 'unsent' };
@@ -184,25 +207,25 @@ function send(value, format, record) {
   $('#last-scan-value').textContent = value;
   if (!connected()) {
     renderRecentScans();
-    error('PC 未连接，未发送内容。'); return false;
+    error(t('pcNotConnected')); return false;
   }
   let id;
   try { id = createRequestId(); }
-  catch (cause) { error(`无法生成发送编号：${cause.message}`); return false; }
+  catch (cause) { error(t('requestIdFailed', { message: cause.message })); return false; }
   record.status = 'pending';
   error();
   pending = { id, record, timer: setTimeout(() => {
-    resetPending('结果未确认');
-    error('PC 未及时确认，请核对目标窗口。不会自动重复发送。');
+    resetPending();
+    error(t('timeoutNoAck'));
   }, 20000) };
-  $('#send-status').textContent = '发送中';
+  setLabel('#send-status', 'sending');
   $('#send-status').className = 'result pending';
-  $('#scanner-message').textContent = '正在发送';
+  setLabel('#scanner-message', 'sendingNow');
   renderRecentScans();
   try { socket.send(JSON.stringify({ type: 'scan', id, value, format })); }
   catch {
-    resetPending('结果未确认');
-    error('发送中断，请核对 PC 后再手动重发。');
+    resetPending();
+    error(t('sendInterrupted'));
     return false;
   }
   return true;
@@ -217,21 +240,21 @@ function stopCamera() {
   running = false;
   $('#preview').srcObject = null;
   $('#camera-idle').hidden = false;
-  $('#start-scan').innerHTML = '<i data-lucide="camera"></i><span>开启摄像头</span>';
+  $('#start-scan').innerHTML = `<i data-lucide="camera"></i><span data-i18n="startCamera">${t('startCamera')}</span>`;
   $('#torch').disabled = true;
   $('#switch-camera').disabled = true;
   $('#torch').setAttribute('aria-pressed', 'false');
-  $('#scanner-message').textContent = '摄像头已暂停';
+  setLabel('#scanner-message', 'cameraPaused');
   refreshIcons();
-  cameraPhase = '已停止';
+  cameraPhase = 'diagnosticStopped';
   updateDiagnostics();
 }
 async function startCamera() {
   if (starting) return;
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-    cameraPhase = '环境检查失败';
+    cameraPhase = 'diagnosticCaptureFailed';
     updateDiagnostics();
-    error('当前页面无法调用相机。请确认 HTTPS 证书受信任，并使用已允许相机权限的 Chrome 等独立浏览器打开。'); return;
+    error(t('cameraUnsupported')); return;
   }
   starting = true;
   $('#start-scan').disabled = true;
@@ -249,8 +272,9 @@ async function startCamera() {
     lastSeenAt = 0;
     const selectedDevice = cameras[cameraIndex]?.deviceId;
     stream = await openCameraStream(navigator.mediaDevices, selectedDevice, (attempt) => {
-      cameraPhase = `请求镜头（参数方案 ${attempt}/3）`;
-      $('#scanner-message').textContent = attempt === 1 ? '正在请求摄像头' : '尝试兼容参数';
+      cameraAttempt = attempt;
+      cameraPhase = 'diagnosticStepCapture';
+      setLabel('#scanner-message', attempt === 1 ? 'cameraStarting' : 'compatibleCamera');
       updateDiagnostics();
     });
     if (generation !== cameraGeneration || stopping || document.hidden) {
@@ -259,7 +283,7 @@ async function startCamera() {
     }
     cameraStream = stream;
     phase = 'preview';
-    cameraPhase = '启动预览与扫码';
+    cameraPhase = 'diagnosticStart';
     updateDiagnostics();
     $('#preview').muted = true;
     $('#preview').autoplay = true;
@@ -271,9 +295,9 @@ async function startCamera() {
           Promise.resolve().then(() => {
             if (generation !== cameraGeneration) return;
             stopCamera();
-            cameraPhase = '扫码解码失败';
+            cameraPhase = 'decodeFailed';
             updateDiagnostics(decodeError);
-            error('视频解码失败，请查看相机诊断并更新或更换浏览器。');
+            error(t('videoDecodeFailed'));
           });
           return;
         }
@@ -294,9 +318,9 @@ async function startCamera() {
     controls = newControls;
     running = true;
     $('#camera-idle').hidden = true;
-    $('#scanner-message').textContent = '等待识别';
-    $('#start-scan').innerHTML = '<i data-lucide="pause"></i><span>暂停扫码</span>';
-    cameraPhase = '相机运行中';
+    setLabel('#scanner-message', 'scanning');
+    $('#start-scan').innerHTML = `<i data-lucide="pause"></i><span data-i18n="pauseScan">${t('pauseScan')}</span>`;
+    cameraPhase = 'diagnosticRunning';
     const metadata = await cameraMetadata(navigator.mediaDevices, stream);
     if (generation !== cameraGeneration) return;
     cameras = metadata.devices;
@@ -309,9 +333,9 @@ async function startCamera() {
     stopDecoderControls(newControls);
     stopStream(stream);
     stopCamera();
-    cameraPhase = phase === 'preview' ? '预览初始化失败' : '镜头请求失败';
+    cameraPhase = phase === 'preview' ? 'diagnosticPreviewFailed' : 'diagnosticRequestFailed';
     updateDiagnostics(cause);
-    error(cameraErrorMessage(cause, phase));
+    error(cameraErrorMessage(cause, phase, i18n.language));
   } finally {
     starting = false;
     $('#start-scan').disabled = false;
@@ -337,7 +361,7 @@ $('#torch').addEventListener('click', async () => {
   try {
     await $('#preview').srcObject.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: enabled }] });
     $('#torch').setAttribute('aria-pressed', String(enabled));
-  } catch { error('当前镜头不支持手电筒。'); }
+  } catch { error(t('flashlightUnsupported')); }
 });
 $('#manual-form').addEventListener('submit', (event) => {
   event.preventDefault(); send($('#manual-value').value, 'Manual');
@@ -348,7 +372,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   stopping = true; clearTimeout(reconnectTimer); stopCamera(); socket?.close();
 });
-updateDiagnostics();
+applyLanguage(i18n.language);
 if (!token) {
-  setStatus(false); error('未找到配对信息，请扫描 PC 端二维码打开。');
+  setStatus(false); error(t('notPaired'));
 } else connect();
