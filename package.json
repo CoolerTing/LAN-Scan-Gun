@@ -1,17 +1,18 @@
 {
   "name": "lan-scan-gun",
   "version": "1.0.2",
-  "description": "Use a mobile phone as a LAN barcode scanner for Windows.",
+  "description": "Use a mobile phone as a LAN barcode scanner for Windows and macOS.",
   "main": "electron/main.cjs",
   "author": "Lan Scan Gun",
   "license": "MIT",
   "scripts": {
     "dev": "npm run build && electron .",
-    "build": "vite build",
+    "build": "node electron/build-macos-input.cjs && vite build",
     "test": "node --test tests/*.test.cjs",
     "preview": "node electron/preview.cjs",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder --win nsis --x64"
+    "dist": "npm run build && electron-builder --win nsis --x64",
+    "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --x64 -c.directories.output=outputs/macos"
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
@@ -33,16 +34,23 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!electron/bin/module-cache/**/*",
+      "!electron/build-macos-input.cjs",
       "package.json"
     ],
     "win": {
       "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.utilities",
+      "binaries": ["Contents/Resources/app.asar.unpacked/electron/bin/input-macos"]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     },
-    "asarUnpack": ["electron/input.ps1"]
+    "asarUnpack": ["electron/input.ps1", "electron/bin/input-macos"]
   }
 }

@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell, dialog, clipboard } = require('elect
 const path = require('node:path');
 const fs = require('node:fs');
 const { createScannerServer, getAddresses } = require('./server.cjs');
-const { WindowsInput } = require('./windows-input.cjs');
+const { createInput } = require('./input.cjs');
 const { normalizeSettings, readSettings, writeSettings, validatePorts } = require('./settings.cjs');
 
 let window;
@@ -30,10 +30,22 @@ function createWindow() {
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
-ipcMain.handle('get-app-info', () => ({
+async function inputStatus() {
+  return input.getStatus ? input.getStatus() : { supported: true, trusted: true };
+}
+ipcMain.handle('get-app-info', async () => ({
   ...server.info(), settings: preferences, addresses: getAddresses(),
-  platform: process.platform, history: server.history
+  platform: process.platform, history: server.history, inputStatus: await inputStatus()
 }));
+ipcMain.handle('get-input-status', inputStatus);
+ipcMain.handle('request-input-permission', async () => {
+  if (process.platform !== 'darwin') return inputStatus();
+  const status = await input.requestPermission();
+  if (!status.trusted) {
+    await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility');
+  }
+  return status;
+});
 ipcMain.handle('copy-url', () => clipboard.writeText(server.info().pairingUrl));
 ipcMain.handle('open-mobile-url', () => shell.openExternal(server.info().pairingUrl));
 ipcMain.handle('select-address', (_event, address) => {
@@ -81,7 +93,7 @@ else {
       if (!fs.existsSync(path.join(__dirname, '..', 'dist', 'index.html'))) {
         throw new Error('缺少前端资源，请先执行 npm run build。');
       }
-      input = new WindowsInput();
+      input = createInput();
       server = await createScannerServer({
         root: path.join(__dirname, '..', 'dist'), dataDir: app.getPath('userData'),
         port: preferences.port, setupPort: preferences.setupPort,

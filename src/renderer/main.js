@@ -39,6 +39,9 @@ document.querySelector('#app').innerHTML = `
         </div>
       </form>
       <div class="section-heading settings-heading"><h2>输入设置</h2><i data-lucide="keyboard"></i></div>
+      <div id="input-permission" class="setting" hidden><span id="input-permission-status">辅助功能 · 未授权</span>
+        <button id="grant-input-permission" class="icon-btn" title="打开辅助功能授权设置" aria-label="打开辅助功能授权设置"><i data-lucide="settings"></i></button>
+      </div>
       <label class="setting"><span>扫码后回车</span><input id="enter-setting" type="checkbox" role="switch" checked></label>
       <label class="setting"><span>手机提示音</span><input id="sound-setting" type="checkbox" role="switch" checked></label>
       <div class="device-summary"><i data-lucide="wifi"></i><span id="device-count">暂无移动设备</span></div>
@@ -85,17 +88,28 @@ function notice(text) {
   $('#notice').hidden = !text;
   $('#notice').textContent = text;
 }
+function renderInputStatus(status) {
+  info.inputStatus = status;
+  $('#input-permission').hidden = info.platform !== 'darwin';
+  $('#input-permission-status').textContent = status.error ? '输入服务 · 不可用' :
+    `辅助功能 · ${status.trusted ? '已授权' : '未授权'}`;
+  if (status.error) notice(status.error);
+}
+async function refreshInputStatus() {
+  try { renderInputStatus(await bridge.getInputStatus()); }
+  catch (error) { notice(error.message); }
+}
 async function initialize() {
   refreshIcons();
   if (!bridge) {
     info = {
       pairingUrl: `${location.protocol}//${location.hostname}:8788/setup#token=preview-only`,
       port: 8787, setupPort: 8788,
-      fingerprint: '预览模式：请在 Windows 桌面端连接真实设备。'
+      fingerprint: '预览模式：请在 Windows 或 macOS 桌面端连接真实设备。'
     };
     $('#network').innerHTML = `<option>界面预览</option>`;
     $('#service-status').textContent = '预览模式';
-    notice('当前是网页预览。系统光标输入和设备配对需要 Windows 桌面端。');
+    notice('当前是网页预览。系统光标输入和设备配对需要 Windows 或 macOS 桌面端。');
     $('#enter-setting').disabled = $('#sound-setting').disabled = true;
     $('#copy-url').disabled = $('#open-mobile').disabled = true;
     $('#clear-history').disabled = true;
@@ -113,9 +127,17 @@ async function initialize() {
   $('#enter-setting').checked = info.settings.enterAfterScan;
   $('#sound-setting').checked = info.settings.sound;
   updateStatus(info.connectedDevices);
-  if (info.platform !== 'win32') notice('当前为非 Windows 环境。连接和扫码可测试，但系统光标输入仅支持 Windows。');
+  renderInputStatus(info.inputStatus);
+  if (!info.inputStatus.supported) notice('当前系统不支持光标输入，请使用 Windows 或 macOS 桌面端。');
   await renderConnection();
   renderHistory();
+  $('#grant-input-permission').addEventListener('click', async () => {
+    $('#grant-input-permission').disabled = true;
+    try { renderInputStatus(await bridge.requestInputPermission()); }
+    catch (error) { notice(error.message); }
+    finally { $('#grant-input-permission').disabled = false; }
+  });
+  if (info.platform === 'darwin') window.addEventListener('focus', refreshInputStatus);
   $('#network').addEventListener('change', async () => {
     try { info = { ...info, ...await bridge.selectAddress($('#network').value) }; await renderConnection(); }
     catch (error) { notice(error.message); }
@@ -149,7 +171,7 @@ async function initialize() {
       info = { ...info, ...await bridge.setPorts({ port, setupPort }) };
       updateStatus(info.connectedDevices);
       await renderConnection();
-      notice('端口已保存。请用移动设备重新扫描二维码连接，并在 Windows 防火墙放行新端口。');
+      notice('端口已保存。请用移动设备重新扫描二维码连接，并在系统防火墙放行新端口。');
     } catch (error) {
       notice(error.message);
       info = { ...info, ...await bridge.getAppInfo() };
@@ -174,6 +196,9 @@ async function initialize() {
       else if (message.type === 'scan') history.unshift(message.scan);
       history = history.slice(0, 100);
       renderHistory();
+      if (message.type === 'scan-update' && message.scan.status === 'error' && info.platform === 'darwin') {
+        refreshInputStatus();
+      }
     }
     if (message.type === 'history-cleared') { history = []; renderHistory(); }
   });

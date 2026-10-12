@@ -5,6 +5,7 @@ node_modules/
 dist/
 outputs/
 work/
+electron/bin/
 
 # Test and tool caches
 coverage/

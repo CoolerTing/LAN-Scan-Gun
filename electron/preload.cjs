@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('scanGun', {
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
+  getInputStatus: () => ipcRenderer.invoke('get-input-status'),
+  requestInputPermission: () => ipcRenderer.invoke('request-input-permission'),
   openMobileUrl: () => ipcRenderer.invoke('open-mobile-url'),
   copyUrl: () => ipcRenderer.invoke('copy-url'),
   selectAddress: (address) => ipcRenderer.invoke('select-address', address),
